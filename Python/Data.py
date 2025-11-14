@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS wifi_scans (
     timestamp INTEGER,
     location TEXT,
     ssid TEXT,
-    bssid TEXT,
+    bssid TEXT UNIQUE,
     rssi INTEGER,
     channel INTEGER
 )
@@ -58,6 +58,12 @@ while True:
         cur.execute("""
             INSERT INTO wifi_scans (timestamp, location, ssid, bssid, rssi, channel)
             VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(bssid) DO UPDATE SET
+                timestamp=excluded.timestamp,
+                location=excluded.location,
+                ssid=excluded.ssid,
+                rssi=excluded.rssi,
+                channel=excluded.channel
         """, (timestamp, location, ssid, bssid, rssi, channel))
 
         conn.commit()
