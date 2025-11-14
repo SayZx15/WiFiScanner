@@ -13,9 +13,6 @@ db_path = os.path.abspath(db_path)
 
 os.makedirs(os.path.dirname(db_path), exist_ok=True)
 
-print("Chemin complet de la base :", db_path)
-
-
 # --- 2. Connexion à la base SQLite ---
 conn = sqlite3.connect(db_path)
 cur = conn.cursor()
