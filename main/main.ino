@@ -2,11 +2,25 @@
 #include "LoRa.h"
 
 // ----------------- CONFIGURATION -----------------
-const unsigned long SCAN_INTERVAL = 30 * 1000UL; // toutes les 30s
+const unsigned long SCAN_INTERVAL = 5 * 1000UL; // toutes les 30s
 unsigned long lastScan = 0;
 String currentLocation = "UNKNOWN";   // localisation courante
 
 AP results[10]; // tableau pour stocker les AP détectés
+
+void sendToSerial(AP results[], int n, String location, String timestamp) {
+    for (int i = 0; i < n; i++) {
+        Serial.printf("{\"location\":\"%s\",\"ssid\":\"%s\",\"bssid\":\"%s\",\"rssi\":%d,\"channel\":%d,\"timestamp\":\"%s\"}\n",
+            location.c_str(),
+            results[i].ssid.c_str(),
+            results[i].bssid.c_str(),
+            results[i].rssi,
+            results[i].channel,
+            timestamp.c_str()
+        );
+    }
+}
+
 
 // ----------------- SETUP -----------------
 void setup() {
@@ -44,9 +58,13 @@ void loop() {
     // Scan WiFi et envoi via LoRa
     unsigned long now = millis();
     if (now - lastScan >= SCAN_INTERVAL || lastScan == 0) {
+
         int n = doScan(results, 10); // scan WiFi
         String timestamp = String(millis()); // ou un vrai timestamp
+
+        sendToSerial(results, n, currentLocation, timestamp);
         sendLoRa(results, n, currentLocation, timestamp); // envoi JSON via LoRa
+        
         lastScan = now;
     }
 
