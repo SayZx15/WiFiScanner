@@ -2,12 +2,16 @@ import serial
 import json
 import sqlite3
 import time
+import os
 
 # --- 1. Connexion au port série ---
 ser = serial.Serial("/dev/cu.usbserial-0001", 115200)
 
+db_path = "../Data/wifi_data.db"
+os.makedirs(os.path.dirname(db_path), exist_ok=True)
+
 # --- 2. Connexion à la base SQLite ---
-conn = sqlite3.connect("../Data/wifi_data.db")
+conn = sqlite3.connect("db_path")
 cur = conn.cursor()
 
 # --- 3. Création de la table si elle n’existe pas ---
