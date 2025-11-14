@@ -7,7 +7,7 @@ import time
 ser = serial.Serial("/dev/cu.usbserial-0001", 115200)
 
 # --- 2. Connexion à la base SQLite ---
-conn = sqlite3.connect("wifi_data.db")
+conn = sqlite3.connect("../Data/wifi_data.db")
 cur = conn.cursor()
 
 # --- 3. Création de la table si elle n’existe pas ---
