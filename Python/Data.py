@@ -42,20 +42,21 @@ while True:
         location = data.get("location", "unknown")
 
         # Timestamp UNIX automatique si non fourni
+        ssid = data.get("ssid", "unknown")
+        bssid = data.get("bssid", "unknown")
+        rssi = data.get("rssi", 0)
+        channel = data.get("channel", 0)
+        location = data.get("location", "unknown")
+        timestamp = data.get("timestamp", int(time.time()))
+
         timestamp = data.get("timestamp", int(time.time()))
 
         # --- 5. Insertion dans SQLite ---
         cur.execute("""
             INSERT INTO wifi_scans (timestamp, location, ssid, bssid, rssi, channel)
             VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            timestamp,
-            location,
-            data["ssid"],
-            data["bssid"],
-            data["rssi"],
-            data["channel"]
-        ))
+        """, (timestamp, location, ssid, bssid, rssi, channel))
+
         conn.commit()
 
         print("Sauvegardé :", data)
