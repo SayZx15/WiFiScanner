@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Géolocalisation LoRaWAN</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        #map { height: 600px; width: 100%; border-radius: 10px; }
+        .log-box { max-height: 600px; overflow-y: auto; }
+    </style>
+</head>
+<body class="bg-light">
+
+<div class="container-fluid mt-4">
+    <h1 class="text-center mb-4">📍 Dashboard Géolocalisation WiFi</h1>
+
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white d-flex justify-content-between">
+                    <span>Carte Temps Réel</span>
+                    <span id="statusTxt" class="badge bg-light text-dark">En attente...</span>
+                </div>
+                <div class="card-body">
+                    <div id="map"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card shadow">
+                <div class="card-header bg-dark text-white">Derniers Scans LoRa</div>
+                <div class="card-body log-box">
+                    <table class="table table-striped table-sm">
+                        <thead>
+                            <tr>
+                                <th>MAC</th>
+                                <th>RSSI</th>
+                                <th>Ch</th>
+                            </tr>
+                        </thead>
+                        <tbody id="scanTable"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    // 1. Initialisation Carte
+    var map = L.map('map').setView([48.845, 2.357], 18); // Zoom fort sur votre zone
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+
+    var userMarker = null; // Le point rouge (Vous)
+    var apLayer = L.layerGroup().addTo(map); // Les points bleus (Bornes connues)
+
+    // Icône Rouge pour l'utilisateur
+    var redIcon = new L.Icon({
+        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41]
+    });
+
+    // 2. Charger les bornes connues (Points bleus)
+    async function loadKnownAPs() {
+        try {
+            const res = await fetch('/api/ap_connus');
+            const aps = await res.json();
+            apLayer.clearLayers();
+            
+            aps.forEach(ap => {
+                if(ap.lat && ap.lon) {
+                    L.marker([ap.lat, ap.lon])
+                     .bindPopup(`<b>Borne: ${ap.name}</b><br>${ap.mac_address}`)
+                     .addTo(apLayer);
+                }
+            });
+        } catch(e) { console.error(e); }
+    }
+
+    // 3. Charger les Scans (Tableau)
+    async function loadScans() {
+        try {
+            const res = await fetch('/api/scans');
+            const data = await res.json();
+            const tbody = document.getElementById('scanTable');
+            tbody.innerHTML = '';
+
+            data.forEach(row => {
+                let color = row.rssi > -60 ? 'text-success fw-bold' : (row.rssi < -80 ? 'text-danger' : 'text-warning');
+                tbody.innerHTML += `<tr>
+                    <td><small>${row.mac_address}</small></td>
+                    <td class="${color}">${row.rssi}</td>
+                    <td>${row.channel}</td>
+                </tr>`;
+            });
+        } catch(e) { console.error(e); }
+    }
+
+    // 4. Calculer et Afficher la Position (Point Rouge)
+    async function updatePosition() {
+        try {
+            const res = await fetch('/api/position_estimee');
+            const data = await res.json();
+
+            if (data.latitude && data.longitude) {
+                document.getElementById('statusTxt').innerText = `Triangulation: ${data.ap_count} bornes utilisées`;
+                
+                // Créer ou bouger le marqueur
+                if (userMarker) {
+                    userMarker.setLatLng([data.latitude, data.longitude]);
+                } else {
+                    userMarker = L.marker([data.latitude, data.longitude], {icon: redIcon}).addTo(map);
+                    userMarker.bindPopup("<b>ESP32 Localisé</b>").openPopup();
+                }
+                
+                // Centrer la carte sur l'utilisateur
+                map.panTo([data.latitude, data.longitude]);
+            } else {
+                document.getElementById('statusTxt').innerText = "Pas de localisation (Données insuffisantes)";
+            }
+        } catch(e) { console.error(e); }
+    }
+
+    // Lancement
+    loadKnownAPs();       // Une seule fois au début
+    loadScans();          // Immédiatement
+    setInterval(loadScans, 2000);      // Rafraîchir tableau toutes les 2s
+    setInterval(updatePosition, 2000); // Rafraîchir position toutes les 2s
+
+</script>
+</body>
+</html>

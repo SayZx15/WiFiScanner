@@ -176,7 +176,14 @@ void loop() {
           }
 
           // C'est un bon réseau
-          Serial.println("V Ajouté (Fixe): " + ssid + " [" + String(WiFi.RSSI(i)) + "dBm]");
+          String macStr = "";
+          for (int k = 0; k < 6; k++) {
+              if (bssid[k] < 16) macStr += "0"; // Ajoute un zéro si l'octet est < 16 (hex)
+              macStr += String(bssid[k], HEX);
+              if (k < 5) macStr += ":";
+          }
+          macStr.toUpperCase();
+          Serial.println("V Ajouté (Fixe): " + ssid + " [" + macStr + "] [" + String(WiFi.RSSI(i)) + "dBm]");
           
           // MAC (6 octets)
           for(int k=0; k<6; k++) rawPayload[idx++] = bssid[k];
