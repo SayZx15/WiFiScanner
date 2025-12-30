@@ -1,0 +1,463 @@
+[
+    {
+        "id": "ea530114434b302b",
+        "type": "tab",
+        "label": "LoraWIFI",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "ebf0428852dbeacd",
+        "type": "mqtt in",
+        "z": "ea530114434b302b",
+        "name": "TTN-MQTT",
+        "topic": "v3/+/devices/+/up",
+        "qos": "2",
+        "datatype": "auto-detect",
+        "broker": "7471abc7cb6c7d57",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 250,
+        "y": 680,
+        "wires": [
+            [
+                "452e80985b071897"
+            ]
+        ]
+    },
+    {
+        "id": "452e80985b071897",
+        "type": "function",
+        "z": "ea530114434b302b",
+        "name": "Decode LoRa",
+        "func": "// Récupération payload TTN\nlet uplink = msg.payload.uplink_message;\nif (!uplink || !uplink.frm_payload) return msg;\n\nlet buffer = Buffer.from(uplink.frm_payload, 'base64');\nlet i = 0;\nlet decoded = {};\n\n// 1. Header\nlet header = buffer[i++];\ndecoded.type = (header === 0x55) ? \"SCAN_WIFI\" : \"UNKNOWN\";\n\n// 2. Timestamp\nlet ts = (buffer[i++] << 8) | buffer[i++];\ndecoded.device_timer = ts;\n\n// 3. Count\nlet count = buffer[i++];\ndecoded.networks = [];\n\n// 4. Boucle APs\nfor (let k = 0; k < count; k++) {\n    if (i + 8 > buffer.length) break;\n\n    // MAC\n    let macParts = [];\n    for (let m = 0; m < 6; m++) {\n        let byte = buffer[i++];\n        let hex = byte.toString(16).toUpperCase();\n        if (hex.length < 2) hex = \"0\" + hex;\n        macParts.push(hex);\n    }\n    let macStr = macParts.join(\":\");\n\n    // RSSI\n    let rssiRaw = buffer[i++];\n    let rssi = (rssiRaw > 127) ? rssiRaw - 256 : rssiRaw;\n\n    // Channel\n    let channel = buffer[i++];\n\n    decoded.networks.push({\n        \"mac\": macStr,\n        \"rssi\": rssi,\n        \"channel\": channel\n    });\n}\n\nmsg.payload = decoded;\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 440,
+        "y": 680,
+        "wires": [
+            [
+                "c04212a300d0600a",
+                "0448778cab263f89",
+                "a0788346b2debca4"
+            ]
+        ]
+    },
+    {
+        "id": "c04212a300d0600a",
+        "type": "debug",
+        "z": "ea530114434b302b",
+        "name": "Debug Payload",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 660,
+        "y": 540,
+        "wires": []
+    },
+    {
+        "id": "0448778cab263f89",
+        "type": "function",
+        "z": "ea530114434b302b",
+        "name": "Préparer SQL (Scans)",
+        "func": "var networks = msg.payload.networks;\nif (!networks || networks.length === 0) return null;\n\nvar msgs = [];\n\nfor (var i = 0; i < networks.length; i++) {\n    var net = networks[i];\n    var mac = (net.mac) ? net.mac : \"UNKNOWN\";\n    var rssi = (net.rssi) ? net.rssi : 0;\n    var channel = (net.channel) ? net.channel : 0;\n\n    // Insertion dans l'historique\n    var query = \"INSERT INTO wifi_scans (mac_address, rssi, channel) VALUES ('\" + mac + \"', \" + rssi + \", \" + channel + \")\";\n\n    msgs.push({\n        topic: query,\n        payload: []\n    });\n}\nreturn [msgs];",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 700,
+        "y": 680,
+        "wires": [
+            [
+                "f1c653634f34e07d"
+            ]
+        ]
+    },
+    {
+        "id": "f1c653634f34e07d",
+        "type": "sqlite",
+        "z": "ea530114434b302b",
+        "mydb": "8af43983f37beef3",
+        "sqlquery": "msg.topic",
+        "sql": "",
+        "name": "DB LoraWiFi",
+        "x": 1470,
+        "y": 680,
+        "wires": [
+            [
+                "7ac63053e5815cef"
+            ]
+        ]
+    },
+    {
+        "id": "a0788346b2debca4",
+        "type": "function",
+        "z": "ea530114434b302b",
+        "name": "Vérifier si Connu",
+        "func": "var networks = msg.payload.networks;\nvar msgs = [];\n\nif (networks && networks.length > 0) {\n    for (var i = 0; i < networks.length; i++) {\n        var mac = networks[i].mac;\n        // On demande à la BDD si on connait cette MAC\n        msgs.push({\n            topic: \"SELECT mac_address FROM known_aps WHERE mac_address = '\" + mac + \"'\",\n            mac_to_check: mac\n        });\n    }\n}\nreturn [ msgs ]; ",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 660,
+        "y": 800,
+        "wires": [
+            [
+                "eecf89fb3cfd006c"
+            ]
+        ]
+    },
+    {
+        "id": "eecf89fb3cfd006c",
+        "type": "sqlite",
+        "z": "ea530114434b302b",
+        "mydb": "8af43983f37beef3",
+        "sqlquery": "msg.topic",
+        "sql": "",
+        "name": "Lecture DB",
+        "x": 850,
+        "y": 800,
+        "wires": [
+            [
+                "a376c04c9b377015"
+            ]
+        ]
+    },
+    {
+        "id": "a376c04c9b377015",
+        "type": "switch",
+        "z": "ea530114434b302b",
+        "name": "Connu ou Pas ?",
+        "property": "payload",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "nempty"
+            },
+            {
+                "t": "empty"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 2,
+        "x": 1040,
+        "y": 800,
+        "wires": [
+            [],
+            [
+                "0595b6bdf5b7a96f"
+            ]
+        ]
+    },
+    {
+        "id": "0595b6bdf5b7a96f",
+        "type": "delay",
+        "z": "ea530114434b302b",
+        "name": "Anti-Ban (10s)",
+        "pauseType": "rate",
+        "timeout": "5",
+        "timeoutUnits": "seconds",
+        "rate": "1",
+        "nbRateUnits": "10",
+        "rateUnits": "second",
+        "randomFirst": "1",
+        "randomLast": "5",
+        "randomUnits": "seconds",
+        "drop": true,
+        "allowrate": false,
+        "outputs": 1,
+        "x": 640,
+        "y": 880,
+        "wires": [
+            [
+                "595856e4c61fe50c"
+            ]
+        ]
+    },
+    {
+        "id": "595856e4c61fe50c",
+        "type": "function",
+        "z": "ea530114434b302b",
+        "name": "API WIGLE",
+        "func": "// Entrez votre clé WiGLE (Encoded for use) ci-dessous\nvar myToken = \"QUlEMDZkOTk1MWQwNjc2OGU0N2VhNjlhYzhhMGQyODMwMjQ6NWViNDdjMzQxZjliZWJhZmRhNDNlNWViYzY5ZTM5MTg=\"; \n\nmsg.headers = {\n    \"Authorization\": \"Basic \" + myToken,\n    \"Accept\": \"application/json\"\n};\n\nmsg.url = \"https://api.wigle.net/api/v2/network/detail?netid=\" + msg.mac_to_check;\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 830,
+        "y": 880,
+        "wires": [
+            [
+                "a3922d813216df0c"
+            ]
+        ]
+    },
+    {
+        "id": "a3922d813216df0c",
+        "type": "http request",
+        "z": "ea530114434b302b",
+        "name": "WiGLE API",
+        "method": "GET",
+        "ret": "obj",
+        "paytoqs": "ignore",
+        "url": "",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 1030,
+        "y": 880,
+        "wires": [
+            [
+                "9383ba930c68c812",
+                "c028dc6149a1763e"
+            ]
+        ]
+    },
+    {
+        "id": "9383ba930c68c812",
+        "type": "function",
+        "z": "ea530114434b302b",
+        "name": "Préparer Save GPS",
+        "func": "if (msg.payload.success && msg.payload.results && msg.payload.results.length > 0) {\n    var res = msg.payload.results[0];\n    \n    var mac = res.netid;\n    var name = res.ssid || \"Inconnu\";\n    var lat = res.trilat;\n    var lon = res.trilong;\n\n    var sql = \"INSERT OR REPLACE INTO known_aps (mac_address, name, lat, lon) VALUES ('\" + mac + \"', '\" + name + \"', \" + lat + \", \" + lon + \")\";\n    \n    msg.topic = sql;\n    return msg;\n} else {\n    return null;\n}",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1230,
+        "y": 880,
+        "wires": [
+            [
+                "f1c653634f34e07d"
+            ]
+        ]
+    },
+    {
+        "id": "4b3c0860c7ba9219",
+        "type": "inject",
+        "z": "ea530114434b302b",
+        "name": "INITIALISER BDD",
+        "props": [
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "x": 1260,
+        "y": 620,
+        "wires": [
+            [
+                "f1c653634f34e07d"
+            ]
+        ]
+    },
+    {
+        "id": "af5b91d81823a9fe",
+        "type": "inject",
+        "z": "ea530114434b302b",
+        "name": "Montrer BDD know_aps",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "SELECT * FROM known_aps;",
+        "payload": "",
+        "payloadType": "date",
+        "x": 1280,
+        "y": 560,
+        "wires": [
+            [
+                "f1c653634f34e07d"
+            ]
+        ]
+    },
+    {
+        "id": "7ac63053e5815cef",
+        "type": "debug",
+        "z": "ea530114434b302b",
+        "name": "debug 2",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 1680,
+        "y": 680,
+        "wires": []
+    },
+    {
+        "id": "2c71dabd104ceadf",
+        "type": "inject",
+        "z": "ea530114434b302b",
+        "name": "Montrer BDD scan-wifi",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "SELECT * FROM wifi_scans;",
+        "payload": "",
+        "payloadType": "date",
+        "x": 1280,
+        "y": 500,
+        "wires": [
+            [
+                "f1c653634f34e07d"
+            ]
+        ]
+    },
+    {
+        "id": "c028dc6149a1763e",
+        "type": "debug",
+        "z": "ea530114434b302b",
+        "name": "debug 3",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 1200,
+        "y": 940,
+        "wires": []
+    },
+    {
+        "id": "59a6e576b97a7366",
+        "type": "inject",
+        "z": "ea530114434b302b",
+        "name": "ADD KNOWN_APS",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": " INSERT OR REPLACE INTO known_aps (mac_address, name, lat, lon) VALUES ('D8:47:32:5C:68:61', 'TP-Link_6861', 48.845241, 2.357433);",
+        "payload": "",
+        "payloadType": "date",
+        "x": 1270,
+        "y": 440,
+        "wires": [
+            [
+                "f1c653634f34e07d"
+            ]
+        ]
+    },
+    {
+        "id": "7471abc7cb6c7d57",
+        "type": "mqtt-broker",
+        "name": "TTN-MQTT",
+        "broker": "eu1.cloud.thethings.network",
+        "port": "8883",
+        "tls": "dc3d7f99a007c2d8",
+        "clientid": "Node-Red-JY",
+        "autoConnect": true,
+        "usetls": true,
+        "protocolVersion": 4,
+        "keepalive": 60,
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthRetain": "false",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closeRetain": "false",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willRetain": "false",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
+    },
+    {
+        "id": "8af43983f37beef3",
+        "type": "sqlitedb",
+        "db": "/Users/johan/Documents/Cours/Polytech/S7/IoT/TP/ProjetGPS_WiFi/Data/loraWIFI.db",
+        "mode": "RWC"
+    },
+    {
+        "id": "dc3d7f99a007c2d8",
+        "type": "tls-config",
+        "name": "",
+        "cert": "",
+        "key": "",
+        "ca": "",
+        "certname": "",
+        "keyname": "",
+        "caname": "",
+        "servername": "",
+        "verifyservercert": true,
+        "alpnprotocol": ""
+    },
+    {
+        "id": "cbb1a2b2a6e66d0f",
+        "type": "global-config",
+        "env": [],
+        "modules": {
+            "node-red-node-sqlite": "1.1.1"
+        }
+    }
+]
